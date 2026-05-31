@@ -1,5 +1,5 @@
 # 🚀 Ti-Tuka
-
+APP: https://ti-tuka.vercel.app/
 > **"Ti-Tuka"** (término derivado del bésiro, la lengua original chiquitana, que significa *"lo tuyo"*). Un proyecto desarrollado en el marco del evento **Build with AI 2026 Santa Cruz** bajo la organización de **GDG Santa Cruz**.
 
 ---
