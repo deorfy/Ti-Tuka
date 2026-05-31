@@ -8,7 +8,7 @@ DEMO: https://youtu.be/IRbxp1qHFKs
 ## 👥 Integrantes (Team: Purple Haze)
 * **Delgado Teran Kalet Manre**
 * **Fernández López Lourdes Marcia**
-* **Orosco Rafaela Simone**
+* **Ruiz Orozco Rafaela Simone**
 
 ---
 
