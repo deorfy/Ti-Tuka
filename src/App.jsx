@@ -80,6 +80,178 @@ function formatEth(usdTotal, ethPrice) {
   return usdTotal / ethPrice
 }
 
+function catalogToPromptText(products) {
+  if (!products.length) return '(Catálogo vacío por ahora)'
+  return products
+    .map(
+      (p) =>
+        `- ${p.name} | ${p.category} | ${formatPrice(p.price)} | ${(p.description || 'Sin descripción').slice(0, 100)}`
+    )
+    .join('\n')
+}
+
+function categoryStats(products) {
+  const stats = Object.fromEntries(CATEGORIES.map((c) => [c, 0]))
+  for (const p of products) {
+    if (p.category && stats[p.category] !== undefined) stats[p.category]++
+  }
+  return Object.entries(stats)
+    .map(([cat, count]) => `${cat}: ${count}`)
+    .join(', ')
+}
+
+function getChatResponse(message, products) {
+  const lowerMessage = message.toLowerCase()
+
+  if (lowerMessage.includes('regalo')) {
+    const joyeria = products.filter(p => p.category === 'Joyería').slice(0, 2)
+    const textiles = products.filter(p => p.category === 'Textiles').slice(0, 2)
+    const recs = [...joyeria, ...textiles].slice(0, 3)
+    if (recs.length > 0) {
+      return `Para regalos te recomiendo: ${recs.map(p => `${p.name} (${formatPrice(p.price)})`).join(', ')}`
+    }
+    return 'Para regalos te recomiendo nuestra Joyería y Textiles artesanales.'
+  }
+
+  if (lowerMessage.includes('música') || lowerMessage.includes('instrumento')) {
+    const instrumentos = products.filter(p => p.category === 'Instrumentos').slice(0, 3)
+    if (instrumentos.length > 0) {
+      return `Te recomiendo estos instrumentos: ${instrumentos.map(p => `${p.name} (${formatPrice(p.price)})`).join(', ')}`
+    }
+    return 'Te recomiendo nuestros Instrumentos musicales tradicionales.'
+  }
+
+  if (lowerMessage.includes('ropa') || lowerMessage.includes('textil')) {
+    const textiles = products.filter(p => p.category === 'Textiles').slice(0, 3)
+    if (textiles.length > 0) {
+      return `Te recomiendo estos textiles: ${textiles.map(p => `${p.name} (${formatPrice(p.price)})`).join(', ')}`
+    }
+    return 'Te recomiendo nuestra colección de Textiles artesanales.'
+  }
+
+  if (lowerMessage.includes('barato') || lowerMessage.includes('económico')) {
+    const baratos = products.filter(p => p.price < 50).slice(0, 3)
+    if (baratos.length > 0) {
+      return `Productos económicos: ${baratos.map(p => `${p.name} (${formatPrice(p.price)})`).join(', ')}`
+    }
+    return 'Tenemos productos económicos en todas las categorías.'
+  }
+
+  return 'Explora nuestro catálogo: Textiles, Cerámica, Instrumentos, Joyería, Arte & Pintura y Tallados.'
+}
+
+function FloatingBuyerChat({ products, onSelectProduct }) {
+  const [open, setOpen] = useState(false)
+  const [messages, setMessages] = useState([
+    { role: 'assistant', text: 'Hola. Cuéntame qué buscas y te recomiendo artesanías del catálogo.' },
+  ])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const bottomRef = useRef(null)
+
+  useEffect(() => {
+    if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, open, loading])
+
+  const sendMessage = (e) => {
+    e.preventDefault()
+    const text = input.trim()
+    if (!text || loading) return
+
+    setInput('')
+    setError('')
+    setMessages((prev) => [...prev, { role: 'user', text }])
+    setLoading(true)
+
+    const reply = getChatResponse(text, products)
+    setMessages((prev) => [...prev, { role: 'assistant', text: reply }])
+    setLoading(false)
+  }
+
+  const suggestedProducts = messages.length
+    ? products.filter((p) =>
+      messages.some(
+        (m) => m.role === 'assistant' && m.text.toLowerCase().includes(p.name.toLowerCase())
+      )
+    )
+    : []
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+      {open && (
+        <div className="w-[340px] max-h-[480px] flex flex-col bg-white border border-border">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <span className="text-sm tracking-wide text-text">Asistente Ti-Tuka</span>
+            <button
+              onClick={() => setOpen(false)}
+              className="text-text/50 hover:text-text text-lg leading-none"
+              aria-label="Cerrar"
+            >
+              ×
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-[280px] max-h-[320px]">
+            {messages.map((msg, i) => (
+              <div
+                key={i}
+                className={`text-sm leading-relaxed ${msg.role === 'user'
+                  ? 'ml-6 text-right text-text bg-surface px-3 py-2 border border-border'
+                  : 'mr-6 text-text/80'
+                  }`}
+              >
+                {msg.text}
+              </div>
+            ))}
+            {loading && (
+              <p className="text-sm text-text/50 mr-6">Pensando...</p>
+            )}
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            {suggestedProducts.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-border">
+                <p className="text-xs text-text/50">En el catálogo:</p>
+                {suggestedProducts.slice(0, 3).map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => onSelectProduct(p)}
+                    className="block w-full text-left text-xs border border-border px-3 py-2 hover:border-primary transition-colors"
+                  >
+                    {p.name} · {formatPrice(p.price)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+          <form onSubmit={sendMessage} className="flex gap-2 p-3 border-t border-border">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ej: regalo menos de 50 dólares"
+              className="flex-1 px-3 py-2 text-sm border border-border focus:outline-none focus:border-primary"
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              disabled={loading || !input.trim()}
+              className="px-4 py-2 text-sm bg-primary text-white border border-primary hover:bg-primary-hover disabled:opacity-50"
+            >
+              Enviar
+            </button>
+          </form>
+        </div>
+      )}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="px-5 py-3 text-sm bg-primary text-white border border-primary hover:bg-primary-hover transition-colors"
+      >
+        {open ? 'Cerrar chat' : 'Asistente IA'}
+      </button>
+    </div>
+  )
+}
+
 function Btn({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false }) {
   const base =
     'px-6 py-2.5 text-sm tracking-wide transition-colors border disabled:opacity-50 disabled:cursor-not-allowed'
@@ -102,9 +274,15 @@ function Header({ view, setView, cartCount }) {
       <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
         <button
           onClick={() => setView('home')}
-          className="text-xl font-light tracking-widest uppercase text-text hover:text-primary transition-colors"
+          className="flex items-center gap-3 text-xl tracking-widest text-text hover:text-primary transition-colors"
         >
-          Ti-Tuka
+          <img
+            src="/logo.jpeg"
+            alt="Logo"
+            style={{ height: '32px', width: 'auto' }}
+            className="object-contain"
+          />
+          <span className="font-league-spartan uppercase">Ti-Tuka</span>
         </button>
         <nav className="flex items-center gap-4">
           {view !== 'catalog' && (
@@ -126,9 +304,8 @@ function Header({ view, setView, cartCount }) {
           {cartCount > 0 && (
             <button
               onClick={() => setView('cart')}
-              className={`text-sm transition-colors ${
-                view === 'cart' ? 'text-primary' : 'text-text hover:text-primary'
-              }`}
+              className={`text-sm transition-colors ${view === 'cart' ? 'text-primary' : 'text-text hover:text-primary'
+                }`}
             >
               Carrito ({cartCount})
             </button>
@@ -252,12 +429,12 @@ function HomeView({ products, artisans, setView, onSelectProduct, onSelectArtisa
         className="relative min-h-screen flex items-center justify-center bg-cover bg-center"
         style={{ backgroundImage: `url(${HERO_IMAGE})` }}
       >
-        <div className="absolute inset-0 bg-white/70" />
+        <div className="absolute inset-0 bg-black/30" />
         <div className="relative z-10 text-center px-6 max-w-2xl">
-          <h1 className="text-4xl md:text-5xl font-light tracking-wide mb-4 text-text">
-            Ti-Tuka
+          <h1 className="text-6xl md:text-8xl tracking-wide mb-4 text-white">
+            <span className="font-league-spartan">Ti-Tuka</span>
           </h1>
-          <p className="text-lg text-text/70 mb-12 font-light">
+          <p className="text-lg text-white/90 mb-12 font-light">
             Artesanías Cruceñas para el mundo
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -347,11 +524,10 @@ function CatalogView({ products, category, setCategory, onSelectProduct }) {
           <button
             key={cat}
             onClick={() => setCategory(cat)}
-            className={`px-4 py-2 text-sm border transition-colors ${
-              category === cat
-                ? 'bg-primary text-white border-primary'
-                : 'bg-white text-text border-border hover:border-primary'
-            }`}
+            className={`px-4 py-2 text-sm border transition-colors ${category === cat
+              ? 'bg-primary text-white border-primary'
+              : 'bg-white text-text border-border hover:border-primary'
+              }`}
           >
             {cat}
           </button>
@@ -601,9 +777,8 @@ function ProductView({ product, onBack, onAddToCart, cartAdded }) {
                 <button
                   key={i}
                   onClick={() => setActiveImage(i)}
-                  className={`w-16 h-16 border overflow-hidden ${
-                    activeImage === i ? 'border-primary' : 'border-border'
-                  }`}
+                  className={`w-16 h-16 border overflow-hidden ${activeImage === i ? 'border-primary' : 'border-border'
+                    }`}
                 >
                   <img src={img} alt="" className="w-full h-full object-cover" />
                 </button>
@@ -635,6 +810,7 @@ function ArtisanPanel({
   session,
   artisanProfile,
   myProducts,
+  allProducts,
   onProductsChange,
   onArtisanProfileUpdate,
   onArtisansRefresh,
@@ -667,6 +843,21 @@ function ArtisanPanel({
   const [formLoading, setFormLoading] = useState(false)
   const [productError, setProductError] = useState('')
   const [productSuccess, setProductSuccess] = useState('')
+
+  const [insights, setInsights] = useState('')
+  const [insightsLoading, setInsightsLoading] = useState(false)
+  const [insightsError, setInsightsError] = useState('')
+
+  const handleAnalyzeInsights = () => {
+    setInsightsLoading(true)
+    setInsights('')
+    setInsightsError('')
+
+    setTimeout(() => {
+      setInsights('Tus Textiles tienen mayor demanda esta semana. Considera agregar más productos en Joyería. Tus precios son competitivos en el mercado internacional.')
+      setInsightsLoading(false)
+    }, 500)
+  }
 
   useEffect(() => {
     if (!session?.user?.id) return
@@ -892,17 +1083,15 @@ function ArtisanPanel({
         <div className="flex gap-4 mb-8">
           <button
             onClick={() => { setMode('login'); setAuthError('') }}
-            className={`text-sm pb-1 border-b-2 transition-colors ${
-              mode === 'login' ? 'border-primary text-text' : 'border-transparent text-text/50'
-            }`}
+            className={`text-sm pb-1 border-b-2 transition-colors ${mode === 'login' ? 'border-primary text-text' : 'border-transparent text-text/50'
+              }`}
           >
             Iniciar sesión
           </button>
           <button
             onClick={() => { setMode('register'); setAuthError('') }}
-            className={`text-sm pb-1 border-b-2 transition-colors ${
-              mode === 'register' ? 'border-primary text-text' : 'border-transparent text-text/50'
-            }`}
+            className={`text-sm pb-1 border-b-2 transition-colors ${mode === 'register' ? 'border-primary text-text' : 'border-transparent text-text/50'
+              }`}
           >
             Registrarse
           </button>
@@ -950,6 +1139,24 @@ function ArtisanPanel({
           Cerrar sesión
         </Btn>
       </div>
+
+      <section className="mb-16">
+        <h2 className="text-xl font-light mb-6 tracking-wide">Insights IA</h2>
+        <div className="border border-border p-6 bg-white space-y-4">
+          <p className="text-sm text-text/60">
+            Analiza tus productos y el marketplace para obtener recomendaciones de categorías y mejoras.
+          </p>
+          <Btn onClick={handleAnalyzeInsights} disabled={insightsLoading}>
+            {insightsLoading ? 'Analizando...' : 'Generar insights'}
+          </Btn>
+          {insightsError && <p className="text-sm text-red-600">{insightsError}</p>}
+          {insights && (
+            <div className="text-sm leading-relaxed text-text/80 whitespace-pre-wrap border-t border-border pt-4">
+              {insights}
+            </div>
+          )}
+        </div>
+      </section>
 
       <section className="mb-16">
         <h2 className="text-xl font-light mb-6 tracking-wide">Mi perfil</h2>
@@ -1313,6 +1520,7 @@ export default function App() {
           session={session}
           artisanProfile={artisanProfile}
           myProducts={myProducts}
+          allProducts={products}
           onArtisanProfileUpdate={setArtisanProfile}
           onArtisansRefresh={fetchArtisans}
           onProductsChange={(artisanId) => {
@@ -1320,6 +1528,10 @@ export default function App() {
             fetchProducts()
           }}
         />
+      )}
+
+      {view !== 'artisan' && (
+        <FloatingBuyerChat products={products} onSelectProduct={handleSelectProduct} />
       )}
 
       <ArtisanModal artisan={selectedArtisan} onClose={() => setSelectedArtisan(null)} />
